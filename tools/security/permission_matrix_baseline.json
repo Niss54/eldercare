@@ -1,0 +1,67 @@
+{
+  "admin": [
+    "analytics:read",
+    "audit:read",
+    "consent:manage",
+    "family:approve",
+    "family:link",
+    "family:unlink",
+    "health:read",
+    "health:write",
+    "identity:manage",
+    "identity:read",
+    "marketplace:manage",
+    "marketplace:read",
+    "marketplace:verify",
+    "medication:manage",
+    "medication:read",
+    "notification:read",
+    "notification:send",
+    "sos:respond",
+    "sos:trigger",
+    "subscription:manage",
+    "subscription:read"
+  ],
+  "family_member": [
+    "family:link",
+    "family:unlink",
+    "health:read",
+    "identity:read",
+    "marketplace:read",
+    "medication:manage",
+    "medication:read",
+    "notification:read",
+    "sos:trigger",
+    "subscription:read"
+  ],
+  "parent": [
+    "consent:manage",
+    "family:approve",
+    "family:unlink",
+    "health:read",
+    "identity:read",
+    "medication:read",
+    "notification:read",
+    "sos:trigger",
+    "subscription:read"
+  ],
+  "caregiver": [
+    "health:read",
+    "identity:read",
+    "marketplace:read",
+    "medication:manage",
+    "medication:read",
+    "notification:read",
+    "notification:send",
+    "sos:respond"
+  ],
+  "doctor": [
+    "health:read",
+    "health:write",
+    "identity:read",
+    "marketplace:read",
+    "medication:read",
+    "notification:read",
+    "sos:respond"
+  ]
+}

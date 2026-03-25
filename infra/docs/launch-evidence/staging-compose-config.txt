@@ -1,0 +1,335 @@
+time="2026-03-24T22:00:12+05:30" level=warning msg="The \"DB_USER\" variable is not set. Defaulting to a blank string."
+time="2026-03-24T22:00:12+05:30" level=warning msg="The \"DB_PASSWORD\" variable is not set. Defaulting to a blank string."
+time="2026-03-24T22:00:12+05:30" level=warning msg="The \"DB_NAME\" variable is not set. Defaulting to a blank string."
+time="2026-03-24T22:00:12+05:30" level=warning msg="The \"MINIO_PASSWORD\" variable is not set. Defaulting to a blank string."
+time="2026-03-24T22:00:12+05:30" level=warning msg="The \"MINIO_USER\" variable is not set. Defaulting to a blank string."
+time="2026-03-24T22:00:12+05:30" level=warning msg="The \"DB_PASSWORD\" variable is not set. Defaulting to a blank string."
+time="2026-03-24T22:00:12+05:30" level=warning msg="The \"MINIO_USER\" variable is not set. Defaulting to a blank string."
+time="2026-03-24T22:00:12+05:30" level=warning msg="The \"MINIO_PASSWORD\" variable is not set. Defaulting to a blank string."
+time="2026-03-24T22:00:12+05:30" level=warning msg="The \"MINIO_USER\" variable is not set. Defaulting to a blank string."
+time="2026-03-24T22:00:12+05:30" level=warning msg="The \"S3_BUCKET_NAME\" variable is not set. Defaulting to a blank string."
+time="2026-03-24T22:00:12+05:30" level=warning msg="The \"MINIO_PASSWORD\" variable is not set. Defaulting to a blank string."
+time="2026-03-24T22:00:12+05:30" level=warning msg="The \"DB_USER\" variable is not set. Defaulting to a blank string."
+time="2026-03-24T22:00:12+05:30" level=warning msg="The \"DB_PASSWORD\" variable is not set. Defaulting to a blank string."
+time="2026-03-24T22:00:12+05:30" level=warning msg="The \"DB_NAME\" variable is not set. Defaulting to a blank string."
+time="2026-03-24T22:00:12+05:30" level=warning msg="The \"DB_USER\" variable is not set. Defaulting to a blank string."
+time="2026-03-24T22:00:12+05:30" level=warning msg="The \"DB_PASSWORD\" variable is not set. Defaulting to a blank string."
+time="2026-03-24T22:00:12+05:30" level=warning msg="The \"DB_NAME\" variable is not set. Defaulting to a blank string."
+time="2026-03-24T22:00:12+05:30" level=warning msg="C:\\Users\\nisha\\OneDrive\\Documents\\eldercare\\docker-compose.staging.yml: the attribute `version` is obsolete, it will be ignored, please remove it to avoid potential confusion"
+name: eldercare
+services:
+  api:
+    build:
+      context: C:\Users\nisha\OneDrive\Documents\eldercare\apps\api
+      dockerfile: Dockerfile
+      target: builder
+    container_name: eldercare-api-staging
+    depends_on:
+      minio:
+        condition: service_healthy
+        required: true
+      postgres:
+        condition: service_healthy
+        required: true
+      redis:
+        condition: service_healthy
+        required: true
+    deploy:
+      resources:
+        limits:
+          cpus: 1
+          memory: "1073741824"
+        reservations:
+          cpus: 0.5
+          memory: "536870912"
+    environment:
+      APP_ENV: staging
+      CELERY_BROKER_URL: redis://redis:6379/1
+      CELERY_RESULT_BACKEND: redis://redis:6379/2
+      DATABASE_URL: postgresql://:@postgres:5432/
+      JWT_REFRESH_SECRET_KEY: change-me-too
+      JWT_SECRET_KEY: change-me
+      LOG_LEVEL: info
+      REDIS_URL: redis://redis:6379/0
+      S3_ACCESS_KEY: ""
+      S3_BUCKET_NAME: ""
+      S3_ENDPOINT_URL: http://minio:9000
+      S3_REGION: us-east-1
+      S3_SECRET_KEY: ""
+    healthcheck:
+      test:
+        - CMD
+        - curl
+        - -f
+        - http://localhost:8000/api/v1/health
+      timeout: 10s
+      interval: 30s
+      retries: 3
+    image: eldercare-api:staging
+    networks:
+      eldercare-staging: null
+    ports:
+      - mode: ingress
+        target: 8000
+        published: "8000"
+        protocol: tcp
+    restart: unless-stopped
+  minio:
+    command:
+      - server
+      - /data
+      - --console-address
+      - :9001
+    container_name: eldercare-minio-staging
+    environment:
+      MINIO_ROOT_PASSWORD: ""
+      MINIO_ROOT_USER: ""
+    healthcheck:
+      test:
+        - CMD
+        - curl
+        - -f
+        - http://localhost:9000/minio/health/live
+      timeout: 5s
+      interval: 10s
+      retries: 5
+    image: minio/minio:latest
+    networks:
+      eldercare-staging: null
+    ports:
+      - mode: ingress
+        target: 9000
+        published: "9000"
+        protocol: tcp
+      - mode: ingress
+        target: 9001
+        published: "9001"
+        protocol: tcp
+    restart: unless-stopped
+    volumes:
+      - type: volume
+        source: minio_data
+        target: /data
+        volume: {}
+  nginx:
+    build:
+      context: C:\Users\nisha\OneDrive\Documents\eldercare\apps\nginx
+      dockerfile: Dockerfile
+    container_name: eldercare-nginx-staging
+    depends_on:
+      api:
+        condition: service_started
+        required: true
+      web:
+        condition: service_started
+        required: true
+    deploy:
+      resources:
+        limits:
+          cpus: 1
+          memory: "536870912"
+    image: eldercare-nginx:staging
+    networks:
+      eldercare-staging: null
+    ports:
+      - mode: ingress
+        target: 80
+        published: "80"
+        protocol: tcp
+      - mode: ingress
+        target: 443
+        published: "443"
+        protocol: tcp
+    restart: unless-stopped
+    volumes:
+      - type: bind
+        source: C:\Users\nisha\OneDrive\Documents\eldercare\apps\nginx\conf.d
+        target: /etc/nginx/conf.d
+        read_only: true
+        bind: {}
+      - type: bind
+        source: C:\Users\nisha\OneDrive\Documents\eldercare\apps\nginx\nginx.conf
+        target: /etc/nginx/nginx.conf
+        read_only: true
+        bind: {}
+      - type: bind
+        source: C:\Users\nisha\OneDrive\Documents\eldercare\infra\ssl\staging
+        target: /etc/nginx/ssl
+        read_only: true
+        bind: {}
+  postgres:
+    container_name: eldercare-postgres-staging
+    environment:
+      POSTGRES_DB: eldercare
+      POSTGRES_INITDB_ARGS: -c max_connections=200
+      POSTGRES_PASSWORD: ""
+      POSTGRES_USER: postgres
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready -U postgres
+      timeout: 5s
+      interval: 10s
+      retries: 5
+    image: postgres:15-alpine
+    networks:
+      eldercare-staging: null
+    ports:
+      - mode: ingress
+        target: 5432
+        published: "5432"
+        protocol: tcp
+    restart: unless-stopped
+    volumes:
+      - type: volume
+        source: postgres_data
+        target: /var/lib/postgresql/data
+        volume: {}
+      - type: bind
+        source: C:\Users\nisha\OneDrive\Documents\eldercare\infra\db\backup
+        target: /backup
+        bind: {}
+  redis:
+    command:
+      - redis-server
+      - --appendonly
+      - "yes"
+      - --maxmemory
+      - 512mb
+      - --maxmemory-policy
+      - allkeys-lru
+    container_name: eldercare-redis-staging
+    healthcheck:
+      test:
+        - CMD
+        - redis-cli
+        - ping
+      timeout: 5s
+      interval: 10s
+      retries: 5
+    image: redis:7-alpine
+    networks:
+      eldercare-staging: null
+    ports:
+      - mode: ingress
+        target: 6379
+        published: "6379"
+        protocol: tcp
+    restart: unless-stopped
+    volumes:
+      - type: volume
+        source: redis_data
+        target: /data
+        volume: {}
+  scheduler:
+    build:
+      context: C:\Users\nisha\OneDrive\Documents\eldercare\apps\api
+      dockerfile: ../../apps/scheduler/Dockerfile
+    container_name: eldercare-scheduler-staging
+    depends_on:
+      postgres:
+        condition: service_started
+        required: true
+      redis:
+        condition: service_started
+        required: true
+    deploy:
+      resources:
+        limits:
+          cpus: 0.5
+          memory: "268435456"
+    environment:
+      APP_ENV: staging
+      CELERY_BROKER_URL: redis://redis:6379/1
+      CELERY_RESULT_BACKEND: redis://redis:6379/2
+      DATABASE_URL: postgresql://:@postgres:5432/
+      LOG_LEVEL: info
+      REDIS_URL: redis://redis:6379/0
+    image: eldercare-scheduler:staging
+    networks:
+      eldercare-staging: null
+    restart: unless-stopped
+  web:
+    build:
+      context: C:\Users\nisha\OneDrive\Documents\eldercare\apps\web
+      dockerfile: Dockerfile
+    container_name: eldercare-web-staging
+    depends_on:
+      api:
+        condition: service_started
+        required: true
+    deploy:
+      resources:
+        limits:
+          cpus: 1
+          memory: "1073741824"
+        reservations:
+          cpus: 0.5
+          memory: "536870912"
+    environment:
+      NEXT_PUBLIC_API_BASE_URL: https://api.staging.eldr.care
+      NEXT_PUBLIC_WEB_BASE_URL: https://staging.eldr.care
+      NODE_ENV: production
+    healthcheck:
+      test:
+        - CMD
+        - curl
+        - -f
+        - http://localhost:3000
+      timeout: 10s
+      interval: 30s
+      retries: 3
+    image: eldercare-web:staging
+    networks:
+      eldercare-staging: null
+    ports:
+      - mode: ingress
+        target: 3000
+        published: "3000"
+        protocol: tcp
+    restart: unless-stopped
+  worker:
+    build:
+      context: C:\Users\nisha\OneDrive\Documents\eldercare\apps\api
+      dockerfile: ../../apps/worker/Dockerfile
+    container_name: eldercare-worker-staging
+    depends_on:
+      minio:
+        condition: service_started
+        required: true
+      postgres:
+        condition: service_started
+        required: true
+      redis:
+        condition: service_started
+        required: true
+    deploy:
+      resources:
+        limits:
+          cpus: 1
+          memory: "536870912"
+    environment:
+      APP_ENV: staging
+      CELERY_BROKER_URL: redis://redis:6379/1
+      CELERY_RESULT_BACKEND: redis://redis:6379/2
+      DATABASE_URL: postgresql://:@postgres:5432/
+      LOG_LEVEL: info
+      REDIS_URL: redis://redis:6379/0
+      S3_ACCESS_KEY: ""
+      S3_ENDPOINT_URL: http://minio:9000
+      S3_SECRET_KEY: ""
+    image: eldercare-worker:staging
+    networks:
+      eldercare-staging: null
+    restart: unless-stopped
+networks:
+  eldercare-staging:
+    name: eldercare_eldercare-staging
+    driver: bridge
+volumes:
+  minio_data:
+    name: eldercare_minio_data
+  postgres_data:
+    name: eldercare_postgres_data
+  redis_data:
+    name: eldercare_redis_data

@@ -1,0 +1,335 @@
+groups:
+- name: eldercare.sli
+  interval: 30s
+  rules:
+  
+  # API Availability SLI
+  - record: sli:availability:api
+    expr: |
+      (
+        sum(rate(http_requests_total{service="api", status=~"2.."}[5m]))
+        /
+        sum(rate(http_requests_total{service="api"}[5m]))
+      ) * 100
+
+  # API Latency SLI (P99)
+  - record: sli:latency_p99:api
+    expr: |
+      histogram_quantile(0.99, rate(http_request_duration_seconds_bucket{service="api"}[5m]))
+
+  # API Error Rate SLI
+  - record: sli:error_rate:api
+    expr: |
+      (
+        sum(rate(http_requests_total{service="api", status=~"5.."}[5m]))
+        /
+        sum(rate(http_requests_total{service="api"}[5m]))
+      ) * 100
+
+  # Web Availability SLI
+  - record: sli:availability:web
+    expr: |
+      (
+        sum(rate(http_requests_total{service="web", status=~"2.."}[5m]))
+        /
+        sum(rate(http_requests_total{service="web"}[5m]))
+      ) * 100
+
+  # Web Latency SLI (P95)
+  - record: sli:latency_p95:web
+    expr: |
+      histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{service="web"}[5m]))
+
+  # Database Connection Pool Usage
+  - record: sli:db_connection_usage
+    expr: |
+      (
+        pg_stat_activity_count{datname="eldercare"}
+        /
+        on(job) group_left max(pg_settings_max_connections)
+      ) * 100
+
+  # Redis Memory Usage
+  - record: sli:redis_memory_usage
+    expr: |
+      (redis_memory_used_bytes / redis_memory_max_bytes) * 100
+
+  # Worker Queue Depth
+  - record: sli:worker_queue_depth
+    expr: |
+      redis_queue_length{queue_name="celery"}
+
+---
+
+- name: eldercare.slo
+  interval: 1m
+  rules:
+
+  # API Availability SLO (99.9%)
+  - alert: APIAvailabilityBoundaryHit
+    expr: |
+      sli:availability:api < 99.9
+    for: 5m
+    labels:
+      severity: critical
+      slo: api_availability
+    annotations:
+      summary: "API availability SLO boundary crossed (threshold: 99.9%)"
+      description: "API availability is {{ $value }}% (SLO: 99.9%)"
+      dashboard: "{{ grafana_dashboard_url }}"
+      runbook: "runbooks/api-slo-breach.md"
+
+  # API Latency SLO (P99 < 500ms)
+  - alert: APILatencySLOBreach
+    expr: |
+      sli:latency_p99:api > 500
+    for: 5m
+    labels:
+      severity: warning
+      slo: api_latency
+    annotations:
+      summary: "API P99 latency SLO breach (threshold: 500ms)"
+      description: "API P99 latency is {{ $value }}ms (SLO: 500ms)"
+
+  # API Error Rate SLO (< 0.1%)
+  - alert: APIErrorRateSLOBreach
+    expr: |
+      sli:error_rate:api > 0.1
+    for: 5m
+    labels:
+      severity: critical
+      slo: api_error_rate
+    annotations:
+      summary: "API error rate SLO breach (threshold: 0.1%)"
+      description: "API error rate is {{ $value }}% (SLO: 0.1%)"
+      dashboard: "{{ grafana_error_dashboard }}"
+
+  # Web Availability SLO (99.5%)
+  - alert: WebAvailabilityBoundaryHit
+    expr: |
+      sli:availability:web < 99.5
+    for: 5m
+    labels:
+      severity: warning
+      slo: web_availability
+    annotations:
+      summary: "Web availability SLO boundary crossed (threshold: 99.5%)"
+      description: "Web availability is {{ $value }}% (SLO: 99.5%)"
+
+  # Database Connection Pool
+  - alert: DatabaseConnectionPoolHighUsage
+    expr: |
+      sli:db_connection_usage > 80
+    for: 3m
+    labels:
+      severity: warning
+    annotations:
+      summary: "Database connection pool usage is high ({{ $value }}%)"
+      description: "Database connection pool usage exceeded 80%"
+      action: "Scale up database connection pool or optimize connection usage"
+
+  # Redis Memory Usage
+  - alert: RedisMemoryHighUsage
+    expr: |
+      sli:redis_memory_usage > 85
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: "Redis memory usage is high ({{ $value }}%)"
+      description: "Redis memory usage exceeded 85%"
+      action: "Monitor eviction policy or increase Redis memory"
+
+  # Worker Queue Backed Up
+  - alert: WorkerQueueBackedUp
+    expr: |
+      sli:worker_queue_depth > 1000
+    for: 10m
+    labels:
+      severity: warning
+    annotations:
+      summary: "Worker queue has {{ $value }} pending jobs"
+      description: "Celery worker queue depth is growing"
+      action: "Scale up worker replicas or investigate slow tasks"
+
+  # POD Network I/O High
+  - alert: PODNetworkIoHigh
+    expr: |
+      (
+        rate(container_network_transmit_bytes_total{pod=~"api-.*"}[5m])
+        +
+        rate(container_network_receive_bytes_total{pod=~"api-.*"}[5m])
+      ) > 100000000  # 100 MB/s
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: "High network I/O detected on API pods ({{ $value | humanize }}B/s)"
+      description: "Network traffic is unusually high"
+
+  # Container Restart Spike
+  - alert: ContainerRestartSpike
+    expr: |
+      increase(container_last_seen{pod=~"(api|web|worker)-.*"}[15m]) > 3
+    labels:
+      severity: critical
+    annotations:
+      summary: "Container {{ $labels.pod }} is restarting frequently"
+      description: "Pod {{ $labels.pod }} has restarted {{ $value }} times in 15 minutes"
+
+---
+
+- name: eldercare.sli_tracking
+  interval: 5m
+  rules:
+
+  # Track monthly availability (for error budget calculation)
+  - record: sli_monthly:availability:api
+    expr: |
+      (count(sli:availability:api > 99.9)) / (count(sli:availability:api))
+
+  # Monthly error budget tracking
+  - record: sli_monthly:error_budget:api
+    expr: |
+      100 - (
+        sum(increase(http_requests_total{service="api", status=~"5.."}[30d]))
+        /
+        sum(increase(http_requests_total{service="api"}[30d])) * 100
+      )
+
+  # Latency percentile tracking
+  - record: slo:latency:p50:api
+    expr: histogram_quantile(0.50, rate(http_request_duration_seconds_bucket{service="api"}[5m]))
+
+  - record: slo:latency:p75:api
+    expr: histogram_quantile(0.75, rate(http_request_duration_seconds_bucket{service="api"}[5m]))
+
+  - record: slo:latency:p95:api
+    expr: histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{service="api"}[5m]))
+
+  - record: slo:latency:p99:api
+    expr: histogram_quantile(0.99, rate(http_request_duration_seconds_bucket{service="api"}[5m]))
+
+---
+
+- name: eldercare.detailed_alerts
+  interval: 30s
+  rules:
+
+  # Specific endpoint SLOs
+  - alert: HealthCheckEndpointSlow
+    expr: |
+      http_request_duration_seconds{endpoint="/api/v1/health", quantile="0.99"} > 100
+    for: 3m
+    labels:
+      severity: info
+    annotations:
+      summary: "Health check endpoint unusually slow ({{ $value }}ms)"
+
+  # Database Query Performance
+  - alert: DatabaseQuerySlow
+    expr: |
+      histogram_quantile(0.95, rate(db_query_duration_seconds_bucket[5m])) > 1
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: "Database queries are slow (P95: {{ $value }}s)"
+      description: "95th percentile query duration exceeds 1 second"
+
+  # Authentication Service Degradation
+  - alert: AuthServiceErrors
+    expr: |
+      rate(http_requests_total{service="api", endpoint="/api/v1/auth/.*", status=~"5.."}[5m]) > 0.01
+    for: 3m
+    labels:
+      severity: critical
+    annotations:
+      summary: "Authentication service error rate elevated"
+      description: "Auth endpoints returning 5xx errors at rate {{ $value }}"
+
+  # Notification Queue Building Up
+  - alert: NotificationQueueBacklog
+    expr: |
+      redis_queue_length{queue_name="notifications"} > 5000
+    for: 10m
+    labels:
+      severity: warning
+    annotations:
+      summary: "Notification queue has {{ $value }} pending messages"
+      description: "Email/SMS notifications are backing up"
+
+  # API Gateway Timeout
+  - alert: APIGatewayTimeouts
+    expr: |
+      rate(http_requests_total{service="api", status="504"}[5m]) > 0.001
+    for: 3m
+    labels:
+      severity: critical
+    annotations:
+      summary: "API gateway timeouts detected"
+      description: "Gateway is returning 504 errors"
+
+---
+
+- name: eldercare.capacity_planning
+  interval: 1h
+  rules:
+
+  # CPU trend for capacity forecasting
+  - record: capacity:cpu:trend:7d
+    expr: |
+      avg_over_time(node_cpu_usage[7d])
+
+  # Memory trend for capacity forecasting
+  - record: capacity:memory:trend:7d
+    expr: |
+      avg_over_time(node_memory_usage[7d])
+
+  # Disk I/O for performance baseline
+  - record: capacity:disk_io:baseline
+    expr: |
+      avg(rate(node_disk_io_time_ms_total[5m]))
+
+  # Predict need for scaling
+  - alert: PredictedCapacityExceeded
+    expr: |
+      predict_linear(container_memory_usage_bytes{pod=~"api-.*"}[1h], 7*24*3600) / 1024 / 1024 / 1024 > 1
+    for: 1h
+    labels:
+      severity: info
+    annotations:
+      summary: "Predicted memory usage may exceed limits within 7 days"
+      description: "Based on trending, expect to need {{ $value }}GB per pod"
+
+---
+
+- name: eldercare.business_metrics
+  interval: 5m
+  rules:
+
+  # Business transaction errors
+  - record: business:transaction:error_rate
+    expr: |
+      (
+        sum(rate(app_transaction_errors_total[5m]))
+        /
+        sum(rate(app_transactions_total[5m]))
+      ) * 100
+
+  # Critical user journey latency
+  - record: business:user_journey:latency_p99
+    expr: |
+      histogram_quantile(0.99, rate(app_user_journey_duration_seconds_bucket[5m]))
+
+  # Alert on critical user journey issues
+  - alert: CriticalUserJourneyDegraded
+    expr: |
+      business:user_journey:latency_p99 > 2  # 2 seconds
+    for: 5m
+    labels:
+      severity: critical
+    annotations:
+      summary: "Critical user journey is degraded"
+      description: "User journey P99 latency is {{ $value }}s (target: < 2s)"
+      impact: "Users unable to complete critical workflows"

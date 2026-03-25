@@ -1,0 +1,57 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: api
+  namespace: eldercare-prod
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: web
+  namespace: eldercare-prod
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: worker
+  namespace: eldercare-prod
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: scheduler
+  namespace: eldercare-prod
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: postgres
+  namespace: eldercare-prod
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: elasticcache-reader
+rules:
+- apiGroups: [""]
+  resources: ["endpoints"]
+  verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: elasticcache-reader-binding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: elasticcache-reader
+subjects:
+- kind: ServiceAccount
+  name: api
+  namespace: eldercare-prod
+- kind: ServiceAccount
+  name: worker
+  namespace: eldercare-prod
+- kind: ServiceAccount
+  name: scheduler
+  namespace: eldercare-prod

@@ -1,0 +1,206 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: eldercare-postgres
+    environment:
+      POSTGRES_DB: ${DB_NAME:-eldercare}
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-development}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - eldercare
+
+  # Redis Cache and Broker
+  redis:
+    image: redis:7-alpine
+    container_name: eldercare-redis
+    command: redis-server --appendonly yes
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - eldercare
+
+  # MinIO S3-compatible storage
+  minio:
+    image: minio/minio:latest
+    container_name: eldercare-minio
+    environment:
+      MINIO_ROOT_USER: ${MINIO_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_PASSWORD:-minioadmin}
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+    command: server /data --console-address ":9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - eldercare
+
+  # FastAPI Backend
+  api:
+    build:
+      context: ./apps/api
+      dockerfile: Dockerfile
+    container_name: eldercare-api
+    environment:
+      APP_ENV: development
+      DATABASE_URL: postgresql://${DB_USER:-postgres}:${DB_PASSWORD:-development}@postgres:5432/${DB_NAME:-eldercare}
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/1
+      CELERY_RESULT_BACKEND: redis://redis:6379/2
+      S3_ENDPOINT_URL: http://minio:9000
+      S3_ACCESS_KEY: ${MINIO_USER:-minioadmin}
+      S3_SECRET_KEY: ${MINIO_PASSWORD:-minioadmin}
+      S3_BUCKET_NAME: ${S3_BUCKET_NAME:-eldercare}
+      S3_REGION: us-east-1
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-dev-secret-key-change-in-production}
+      JWT_REFRESH_SECRET_KEY: ${JWT_REFRESH_SECRET_KEY:-dev-refresh-key-change-in-production}
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    volumes:
+      - ./apps/api/src:/app/src
+      - ./apps/api/alembic:/app/alembic
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - eldercare
+    command: uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload
+
+  # Next.js Frontend
+  web:
+    build:
+      context: ./apps/web
+      dockerfile: Dockerfile
+    container_name: eldercare-web
+    environment:
+      NODE_ENV: development
+      NEXT_PUBLIC_API_BASE_URL: http://localhost:8000
+      NEXT_PUBLIC_WEB_BASE_URL: http://localhost:3000
+    ports:
+      - "3000:3000"
+    depends_on:
+      - api
+    volumes:
+      - ./apps/web/app:/app/app
+      - ./apps/web/lib:/app/lib
+      - ./apps/web/components:/app/components
+      - ./apps/web/public:/app/public
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - eldercare
+    command: npm run dev
+
+  # Celery Worker
+  worker:
+    build:
+      context: ./apps/api
+      dockerfile: ../../apps/worker/Dockerfile
+    container_name: eldercare-worker
+    environment:
+      APP_ENV: development
+      DATABASE_URL: postgresql://${DB_USER:-postgres}:${DB_PASSWORD:-development}@postgres:5432/${DB_NAME:-eldercare}
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/1
+      CELERY_RESULT_BACKEND: redis://redis:6379/2
+      S3_ENDPOINT_URL: http://minio:9000
+      S3_ACCESS_KEY: ${MINIO_USER:-minioadmin}
+      S3_SECRET_KEY: ${MINIO_PASSWORD:-minioadmin}
+    depends_on:
+      - postgres
+      - redis
+      - minio
+    volumes:
+      - ./apps/api/src:/app/src
+    networks:
+      - eldercare
+    command: celery -A src.integrations.celery_config worker --loglevel=info
+
+  # Celery Beat Scheduler
+  scheduler:
+    build:
+      context: ./apps/api
+      dockerfile: ../../apps/scheduler/Dockerfile
+    container_name: eldercare-scheduler
+    environment:
+      APP_ENV: development
+      DATABASE_URL: postgresql://${DB_USER:-postgres}:${DB_PASSWORD:-development}@postgres:5432/${DB_NAME:-eldercare}
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/1
+      CELERY_RESULT_BACKEND: redis://redis:6379/2
+    depends_on:
+      - postgres
+      - redis
+    volumes:
+      - ./apps/api/src:/app/src
+    networks:
+      - eldercare
+    command: celery -A src.integrations.celery_config beat --loglevel=info
+
+  # Nginx Reverse Proxy
+  nginx:
+    build:
+      context: ./apps/nginx
+      dockerfile: Dockerfile
+    container_name: eldercare-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    depends_on:
+      - api
+      - web
+    volumes:
+      - ./apps/nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./apps/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    networks:
+      - eldercare
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  postgres_data:
+  redis_data:
+  minio_data:
+
+networks:
+  eldercare:
+    driver: bridge

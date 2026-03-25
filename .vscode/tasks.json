@@ -1,0 +1,119 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "launch-evidence-task-test",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-Command",
+				"\"'task-ok' | Out-File -FilePath infra/docs/launch-evidence/task-test.txt -Encoding utf8\""
+			],
+			"isBackground": false
+		},
+		{
+			"label": "launch-evidence-task-test-cmd",
+			"type": "shell",
+			"command": "cmd",
+			"args": [
+				"/c",
+				"echo task-ok>infra\\docs\\launch-evidence\\task-test.txt"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "collect-launch-evidence",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"infra/scripts/release/collect-launch-evidence.ps1"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "collect-launch-evidence-cmd",
+			"type": "shell",
+			"command": "cmd",
+			"args": [
+				"/c",
+				"powershell -NoProfile -ExecutionPolicy Bypass -File infra\\scripts\\release\\collect-launch-evidence.ps1"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "evidence-docker-version",
+			"type": "shell",
+			"command": "cmd",
+			"args": [
+				"/c",
+				"docker --version > infra\\docs\\launch-evidence\\docker-version.txt 2>&1"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "evidence-staging-compose-config",
+			"type": "shell",
+			"command": "cmd",
+			"args": [
+				"/c",
+				"docker compose -f infra\\compose\\docker-compose.staging.yml --env-file .env config > infra\\docs\\launch-evidence\\staging-compose-config.txt 2>&1"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "evidence-prod-compose-config",
+			"type": "shell",
+			"command": "cmd",
+			"args": [
+				"/c",
+				"docker compose -f infra\\compose\\docker-compose.prod.yml --env-file .env config > infra\\docs\\launch-evidence\\prod-compose-config.txt 2>&1"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "evidence-aws-version",
+			"type": "shell",
+			"command": "cmd",
+			"args": [
+				"/c",
+				"aws --version > infra\\docs\\launch-evidence\\aws-version.txt 2>&1"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "evidence-staging-compose-config-root",
+			"type": "shell",
+			"command": "cmd",
+			"args": [
+				"/c",
+				"docker compose -f docker-compose.staging.yml --env-file .env config > infra\\docs\\launch-evidence\\staging-compose-config.txt 2>&1"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "evidence-prod-compose-config-root",
+			"type": "shell",
+			"command": "cmd",
+			"args": [
+				"/c",
+				"docker compose -f docker-compose.prod.yml --env-file .env config > infra\\docs\\launch-evidence\\prod-compose-config.txt 2>&1"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "evidence-secrets-script-syntax",
+			"type": "shell",
+			"command": "cmd",
+			"args": [
+				"/c",
+				"bash -n infra\\scripts\\setup-secrets.sh > infra\\docs\\launch-evidence\\secrets-script-syntax.txt 2>&1"
+			],
+			"isBackground": false
+		}
+	]
+}

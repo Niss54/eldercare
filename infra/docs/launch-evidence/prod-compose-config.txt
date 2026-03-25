@@ -1,0 +1,571 @@
+time="2026-03-24T22:00:16+05:30" level=warning msg="The \"SENTRY_DSN\" variable is not set. Defaulting to a blank string."
+time="2026-03-24T22:00:16+05:30" level=warning msg="The \"DB_USER\" variable is not set. Defaulting to a blank string."
+time="2026-03-24T22:00:16+05:30" level=warning msg="The \"DB_PASSWORD\" variable is not set. Defaulting to a blank string."
+time="2026-03-24T22:00:16+05:30" level=warning msg="The \"DB_NAME\" variable is not set. Defaulting to a blank string."
+time="2026-03-24T22:00:16+05:30" level=warning msg="The \"REDIS_PASSWORD\" variable is not set. Defaulting to a blank string."
+time="2026-03-24T22:00:16+05:30" level=warning msg="The \"REDIS_PASSWORD\" variable is not set. Defaulting to a blank string."
+time="2026-03-24T22:00:16+05:30" level=warning msg="The \"REDIS_PASSWORD\" variable is not set. Defaulting to a blank string."
+time="2026-03-24T22:00:16+05:30" level=warning msg="The \"REDIS_PASSWORD\" variable is not set. Defaulting to a blank string."
+time="2026-03-24T22:00:16+05:30" level=warning msg="The \"DB_USER\" variable is not set. Defaulting to a blank string."
+time="2026-03-24T22:00:16+05:30" level=warning msg="The \"DB_PASSWORD\" variable is not set. Defaulting to a blank string."
+time="2026-03-24T22:00:16+05:30" level=warning msg="The \"DB_NAME\" variable is not set. Defaulting to a blank string."
+time="2026-03-24T22:00:16+05:30" level=warning msg="The \"REDIS_PASSWORD\" variable is not set. Defaulting to a blank string."
+time="2026-03-24T22:00:16+05:30" level=warning msg="The \"REDIS_PASSWORD\" variable is not set. Defaulting to a blank string."
+time="2026-03-24T22:00:16+05:30" level=warning msg="The \"REDIS_PASSWORD\" variable is not set. Defaulting to a blank string."
+time="2026-03-24T22:00:16+05:30" level=warning msg="The \"S3_BUCKET_NAME\" variable is not set. Defaulting to a blank string."
+time="2026-03-24T22:00:16+05:30" level=warning msg="The \"MINIO_USER\" variable is not set. Defaulting to a blank string."
+time="2026-03-24T22:00:16+05:30" level=warning msg="The \"MINIO_PASSWORD\" variable is not set. Defaulting to a blank string."
+time="2026-03-24T22:00:16+05:30" level=warning msg="The \"SENTRY_DSN\" variable is not set. Defaulting to a blank string."
+time="2026-03-24T22:00:16+05:30" level=warning msg="The \"REDIS_PASSWORD\" variable is not set. Defaulting to a blank string."
+time="2026-03-24T22:00:16+05:30" level=warning msg="The \"MINIO_USER\" variable is not set. Defaulting to a blank string."
+time="2026-03-24T22:00:16+05:30" level=warning msg="The \"REDIS_PASSWORD\" variable is not set. Defaulting to a blank string."
+time="2026-03-24T22:00:16+05:30" level=warning msg="The \"REDIS_PASSWORD\" variable is not set. Defaulting to a blank string."
+time="2026-03-24T22:00:16+05:30" level=warning msg="The \"MINIO_PASSWORD\" variable is not set. Defaulting to a blank string."
+time="2026-03-24T22:00:16+05:30" level=warning msg="The \"SENTRY_DSN\" variable is not set. Defaulting to a blank string."
+time="2026-03-24T22:00:16+05:30" level=warning msg="The \"DB_USER\" variable is not set. Defaulting to a blank string."
+time="2026-03-24T22:00:16+05:30" level=warning msg="The \"DB_PASSWORD\" variable is not set. Defaulting to a blank string."
+time="2026-03-24T22:00:16+05:30" level=warning msg="The \"DB_NAME\" variable is not set. Defaulting to a blank string."
+time="2026-03-24T22:00:16+05:30" level=warning msg="The \"DB_USER\" variable is not set. Defaulting to a blank string."
+time="2026-03-24T22:00:16+05:30" level=warning msg="The \"DB_PASSWORD\" variable is not set. Defaulting to a blank string."
+time="2026-03-24T22:00:16+05:30" level=warning msg="The \"DB_NAME\" variable is not set. Defaulting to a blank string."
+time="2026-03-24T22:00:16+05:30" level=warning msg="The \"DB_USER\" variable is not set. Defaulting to a blank string."
+time="2026-03-24T22:00:16+05:30" level=warning msg="The \"MINIO_USER\" variable is not set. Defaulting to a blank string."
+time="2026-03-24T22:00:16+05:30" level=warning msg="The \"MINIO_PASSWORD\" variable is not set. Defaulting to a blank string."
+time="2026-03-24T22:00:16+05:30" level=warning msg="C:\\Users\\nisha\\OneDrive\\Documents\\eldercare\\docker-compose.prod.yml: the attribute `version` is obsolete, it will be ignored, please remove it to avoid potential confusion"
+name: eldercare
+services:
+  api_1:
+    build:
+      context: C:\Users\nisha\OneDrive\Documents\eldercare\apps\api
+      dockerfile: Dockerfile
+    container_name: eldercare-api-prod-1
+    depends_on:
+      minio:
+        condition: service_healthy
+        required: true
+      postgres:
+        condition: service_healthy
+        required: true
+      redis:
+        condition: service_healthy
+        required: true
+    deploy:
+      resources:
+        limits:
+          cpus: 2
+          memory: "2147483648"
+        reservations:
+          cpus: 1
+          memory: "1610612736"
+    environment:
+      APP_ENV: production
+      CELERY_BROKER_URL: redis://:@redis:6379/1
+      CELERY_RESULT_BACKEND: redis://:@redis:6379/2
+      DATABASE_URL: postgresql://:@postgres:5432/
+      JWT_REFRESH_SECRET_KEY: change-me-too
+      JWT_SECRET_KEY: change-me
+      LOG_LEVEL: info
+      REDIS_URL: redis://:@redis:6379/0
+      S3_ACCESS_KEY: ""
+      S3_BUCKET_NAME: ""
+      S3_ENDPOINT_URL: http://minio:9000
+      S3_REGION: us-east-1
+      S3_SECRET_KEY: ""
+      SENTRY_DSN: ""
+    healthcheck:
+      test:
+        - CMD
+        - curl
+        - -f
+        - http://localhost:8000/api/v1/health
+      timeout: 10s
+      interval: 30s
+      retries: 3
+    image: eldercare-api:latest
+    networks:
+      eldercare-prod: null
+    restart: always
+  api_2:
+    build:
+      context: C:\Users\nisha\OneDrive\Documents\eldercare\apps\api
+      dockerfile: Dockerfile
+    container_name: eldercare-api-prod-2
+    depends_on:
+      minio:
+        condition: service_healthy
+        required: true
+      postgres:
+        condition: service_healthy
+        required: true
+      redis:
+        condition: service_healthy
+        required: true
+    deploy:
+      resources:
+        limits:
+          cpus: 2
+          memory: "2147483648"
+        reservations:
+          cpus: 1
+          memory: "1610612736"
+    environment:
+      APP_ENV: production
+      CELERY_BROKER_URL: redis://:@redis:6379/1
+      CELERY_RESULT_BACKEND: redis://:@redis:6379/2
+      DATABASE_URL: postgresql://:@postgres:5432/
+      JWT_REFRESH_SECRET_KEY: change-me-too
+      JWT_SECRET_KEY: change-me
+      LOG_LEVEL: info
+      REDIS_URL: redis://:@redis:6379/0
+      S3_ACCESS_KEY: ""
+      S3_BUCKET_NAME: ""
+      S3_ENDPOINT_URL: http://minio:9000
+      S3_REGION: us-east-1
+      S3_SECRET_KEY: ""
+      SENTRY_DSN: ""
+    healthcheck:
+      test:
+        - CMD
+        - curl
+        - -f
+        - http://localhost:8000/api/v1/health
+      timeout: 10s
+      interval: 30s
+      retries: 3
+    image: eldercare-api:latest
+    networks:
+      eldercare-prod: null
+    restart: always
+  api_3:
+    build:
+      context: C:\Users\nisha\OneDrive\Documents\eldercare\apps\api
+      dockerfile: Dockerfile
+    container_name: eldercare-api-prod-3
+    depends_on:
+      minio:
+        condition: service_healthy
+        required: true
+      postgres:
+        condition: service_healthy
+        required: true
+      redis:
+        condition: service_healthy
+        required: true
+    deploy:
+      resources:
+        limits:
+          cpus: 2
+          memory: "2147483648"
+        reservations:
+          cpus: 1
+          memory: "1610612736"
+    environment:
+      APP_ENV: production
+      CELERY_BROKER_URL: redis://:@redis:6379/1
+      CELERY_RESULT_BACKEND: redis://:@redis:6379/2
+      DATABASE_URL: postgresql://:@postgres:5432/
+      JWT_REFRESH_SECRET_KEY: change-me-too
+      JWT_SECRET_KEY: change-me
+      LOG_LEVEL: info
+      REDIS_URL: redis://:@redis:6379/0
+      S3_ACCESS_KEY: ""
+      S3_BUCKET_NAME: ""
+      S3_ENDPOINT_URL: http://minio:9000
+      S3_REGION: us-east-1
+      S3_SECRET_KEY: ""
+      SENTRY_DSN: ""
+    healthcheck:
+      test:
+        - CMD
+        - curl
+        - -f
+        - http://localhost:8000/api/v1/health
+      timeout: 10s
+      interval: 30s
+      retries: 3
+    image: eldercare-api:latest
+    networks:
+      eldercare-prod: null
+    restart: always
+  minio:
+    command:
+      - server
+      - /data
+      - --console-address
+      - :9001
+    container_name: eldercare-minio-prod
+    deploy:
+      resources:
+        limits:
+          cpus: 4
+          memory: "4294967296"
+        reservations:
+          cpus: 2
+          memory: "2147483648"
+    environment:
+      MINIO_PROMETHEUS_AUTH_TYPE: public
+      MINIO_ROOT_PASSWORD: ""
+      MINIO_ROOT_USER: ""
+    healthcheck:
+      test:
+        - CMD
+        - curl
+        - -f
+        - http://localhost:9000/minio/health/live
+      timeout: 5s
+      interval: 10s
+      retries: 5
+    image: minio/minio:latest
+    networks:
+      eldercare-prod: null
+    restart: always
+    volumes:
+      - type: volume
+        source: minio_data
+        target: /data
+        volume: {}
+  nginx:
+    build:
+      context: C:\Users\nisha\OneDrive\Documents\eldercare\apps\nginx
+      dockerfile: Dockerfile
+    container_name: eldercare-nginx-prod
+    depends_on:
+      api_1:
+        condition: service_started
+        required: true
+      api_2:
+        condition: service_started
+        required: true
+      api_3:
+        condition: service_started
+        required: true
+      web_1:
+        condition: service_started
+        required: true
+      web_2:
+        condition: service_started
+        required: true
+    deploy:
+      resources:
+        limits:
+          cpus: 2
+          memory: "1073741824"
+    image: eldercare-nginx:latest
+    networks:
+      eldercare-prod: null
+    ports:
+      - mode: ingress
+        target: 80
+        published: "80"
+        protocol: tcp
+      - mode: ingress
+        target: 443
+        published: "443"
+        protocol: tcp
+    restart: always
+    volumes:
+      - type: bind
+        source: C:\Users\nisha\OneDrive\Documents\eldercare\apps\nginx\conf.d
+        target: /etc/nginx/conf.d
+        read_only: true
+        bind: {}
+      - type: bind
+        source: C:\Users\nisha\OneDrive\Documents\eldercare\apps\nginx\nginx.conf
+        target: /etc/nginx/nginx.conf
+        read_only: true
+        bind: {}
+      - type: bind
+        source: C:\Users\nisha\OneDrive\Documents\eldercare\infra\ssl\prod
+        target: /etc/nginx/ssl
+        read_only: true
+        bind: {}
+      - type: volume
+        source: nginx_cache
+        target: /var/cache/nginx
+        volume: {}
+  postgres:
+    container_name: eldercare-postgres-prod
+    deploy:
+      resources:
+        limits:
+          cpus: 4
+          memory: "4294967296"
+        reservations:
+          cpus: 2
+          memory: "2147483648"
+    environment:
+      POSTGRES_DB: ""
+      POSTGRES_INITDB_ARGS: -c max_connections=500 -c shared_buffers=256MB -c effective_cache_size=1GB
+      POSTGRES_PASSWORD: ""
+      POSTGRES_USER: ""
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - 'pg_isready -U '
+      timeout: 5s
+      interval: 10s
+      retries: 5
+    image: postgres:15-alpine
+    networks:
+      eldercare-prod: null
+    restart: always
+    volumes:
+      - type: volume
+        source: postgres_data
+        target: /var/lib/postgresql/data
+        volume: {}
+      - type: bind
+        source: C:\Users\nisha\OneDrive\Documents\eldercare\infra\db\backup
+        target: /backup
+        bind: {}
+      - type: bind
+        source: C:\Users\nisha\OneDrive\Documents\eldercare\infra\db\postgresql.conf
+        target: /etc/postgresql/postgresql.conf
+        read_only: true
+        bind: {}
+  redis:
+    command:
+      - redis-server
+      - --appendonly
+      - "yes"
+      - --appendfsync
+      - everysec
+      - --maxmemory
+      - 2gb
+      - --maxmemory-policy
+      - allkeys-lru
+      - --requirepass
+    container_name: eldercare-redis-prod
+    deploy:
+      resources:
+        limits:
+          cpus: 2
+          memory: "2147483648"
+    healthcheck:
+      test:
+        - CMD
+        - redis-cli
+        - --raw
+        - incr
+        - ping
+      timeout: 5s
+      interval: 10s
+      retries: 5
+    image: redis:7-alpine
+    networks:
+      eldercare-prod: null
+    restart: always
+    volumes:
+      - type: volume
+        source: redis_data
+        target: /data
+        volume: {}
+  scheduler:
+    build:
+      context: C:\Users\nisha\OneDrive\Documents\eldercare\apps\api
+      dockerfile: ../../apps/scheduler/Dockerfile
+    container_name: eldercare-scheduler-prod
+    depends_on:
+      postgres:
+        condition: service_started
+        required: true
+      redis:
+        condition: service_started
+        required: true
+    deploy:
+      resources:
+        limits:
+          cpus: 1
+          memory: "536870912"
+    environment:
+      APP_ENV: production
+      CELERY_BROKER_URL: redis://:@redis:6379/1
+      CELERY_RESULT_BACKEND: redis://:@redis:6379/2
+      DATABASE_URL: postgresql://:@postgres:5432/
+      LOG_LEVEL: info
+      REDIS_URL: redis://:@redis:6379/0
+      SENTRY_DSN: ""
+    image: eldercare-scheduler:latest
+    networks:
+      eldercare-prod: null
+    restart: always
+  web_1:
+    build:
+      context: C:\Users\nisha\OneDrive\Documents\eldercare\apps\web
+      dockerfile: Dockerfile
+    container_name: eldercare-web-prod-1
+    depends_on:
+      api_1:
+        condition: service_started
+        required: true
+    deploy:
+      resources:
+        limits:
+          cpus: 1.5
+          memory: "1073741824"
+    environment:
+      NEXT_PUBLIC_API_BASE_URL: https://api.eldr.care
+      NEXT_PUBLIC_WEB_BASE_URL: https://eldr.care
+      NODE_ENV: production
+    healthcheck:
+      test:
+        - CMD
+        - curl
+        - -f
+        - http://localhost:3000
+      timeout: 10s
+      interval: 30s
+      retries: 3
+    image: eldercare-web:latest
+    networks:
+      eldercare-prod: null
+    restart: always
+  web_2:
+    build:
+      context: C:\Users\nisha\OneDrive\Documents\eldercare\apps\web
+      dockerfile: Dockerfile
+    container_name: eldercare-web-prod-2
+    depends_on:
+      api_1:
+        condition: service_started
+        required: true
+    deploy:
+      resources:
+        limits:
+          cpus: 1.5
+          memory: "1073741824"
+    environment:
+      NEXT_PUBLIC_API_BASE_URL: https://api.eldr.care
+      NEXT_PUBLIC_WEB_BASE_URL: https://eldr.care
+      NODE_ENV: production
+    healthcheck:
+      test:
+        - CMD
+        - curl
+        - -f
+        - http://localhost:3000
+      timeout: 10s
+      interval: 30s
+      retries: 3
+    image: eldercare-web:latest
+    networks:
+      eldercare-prod: null
+    restart: always
+  worker_1:
+    build:
+      context: C:\Users\nisha\OneDrive\Documents\eldercare\apps\api
+      dockerfile: ../../apps/worker/Dockerfile
+    container_name: eldercare-worker-prod-1
+    depends_on:
+      minio:
+        condition: service_started
+        required: true
+      postgres:
+        condition: service_started
+        required: true
+      redis:
+        condition: service_started
+        required: true
+    deploy:
+      resources:
+        limits:
+          cpus: 2
+          memory: "1073741824"
+    environment:
+      APP_ENV: production
+      CELERY_BROKER_URL: redis://:@redis:6379/1
+      CELERY_RESULT_BACKEND: redis://:@redis:6379/2
+      DATABASE_URL: postgresql://:@postgres:5432/
+      LOG_LEVEL: info
+      REDIS_URL: redis://:@redis:6379/0
+      S3_ACCESS_KEY: ""
+      S3_ENDPOINT_URL: http://minio:9000
+      S3_SECRET_KEY: ""
+      SENTRY_DSN: ""
+    image: eldercare-worker:latest
+    networks:
+      eldercare-prod: null
+    restart: always
+  worker_2:
+    build:
+      context: C:\Users\nisha\OneDrive\Documents\eldercare\apps\api
+      dockerfile: ../../apps/worker/Dockerfile
+    container_name: eldercare-worker-prod-2
+    depends_on:
+      minio:
+        condition: service_started
+        required: true
+      postgres:
+        condition: service_started
+        required: true
+      redis:
+        condition: service_started
+        required: true
+    deploy:
+      resources:
+        limits:
+          cpus: 2
+          memory: "1073741824"
+    environment:
+      APP_ENV: production
+      CELERY_BROKER_URL: redis://:@redis:6379/1
+      CELERY_RESULT_BACKEND: redis://:@redis:6379/2
+      DATABASE_URL: postgresql://:@postgres:5432/
+      LOG_LEVEL: info
+      REDIS_URL: redis://:@redis:6379/0
+      S3_ACCESS_KEY: ""
+      S3_ENDPOINT_URL: http://minio:9000
+      S3_SECRET_KEY: ""
+      SENTRY_DSN: ""
+    image: eldercare-worker:latest
+    networks:
+      eldercare-prod: null
+    restart: always
+  worker_3:
+    build:
+      context: C:\Users\nisha\OneDrive\Documents\eldercare\apps\api
+      dockerfile: ../../apps/worker/Dockerfile
+    container_name: eldercare-worker-prod-3
+    depends_on:
+      minio:
+        condition: service_started
+        required: true
+      postgres:
+        condition: service_started
+        required: true
+      redis:
+        condition: service_started
+        required: true
+    deploy:
+      resources:
+        limits:
+          cpus: 2
+          memory: "1073741824"
+    environment:
+      APP_ENV: production
+      CELERY_BROKER_URL: redis://:@redis:6379/1
+      CELERY_RESULT_BACKEND: redis://:@redis:6379/2
+      DATABASE_URL: postgresql://:@postgres:5432/
+      LOG_LEVEL: info
+      REDIS_URL: redis://:@redis:6379/0
+      S3_ACCESS_KEY: ""
+      S3_ENDPOINT_URL: http://minio:9000
+      S3_SECRET_KEY: ""
+      SENTRY_DSN: ""
+    image: eldercare-worker:latest
+    networks:
+      eldercare-prod: null
+    restart: always
+networks:
+  eldercare-prod:
+    name: eldercare_eldercare-prod
+    driver: bridge
+volumes:
+  minio_data:
+    name: eldercare_minio_data
+  nginx_cache:
+    name: eldercare_nginx_cache
+  postgres_data:
+    name: eldercare_postgres_data
+  redis_data:
+    name: eldercare_redis_data

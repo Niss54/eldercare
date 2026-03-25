@@ -1,0 +1,165 @@
+{
+  "widgets": [
+    {
+      "type": "metric",
+      "properties": {
+        "metrics": [
+          [ "AWS/ApplicationELB", "TargetResponseTime", { "stat": "Average" } ],
+          [ ".", "HTTPCode_Target_2XX_Count", { "stat": "Sum" } ],
+          [ ".", "HTTPCode_Target_4XX_Count", { "stat": "Sum" } ],
+          [ ".", "HTTPCode_Target_5XX_Count", { "stat": "Sum" } ],
+          [ ".", "RequestCount", { "stat": "Sum" } ]
+        ],
+        "period": 60,
+        "stat": "Average",
+        "region": "us-east-1",
+        "title": "API Service Health Overview",
+        "yAxis": {
+          "left": {
+            "min": 0
+          }
+        },
+        "annotations": {
+          "horizontal": [
+            {
+              "label": "SLO: 500ms",
+              "value": 500
+            },
+            {
+              "label": "Alert: 800ms",
+              "value": 800,
+              "fill": "above"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "type": "metric",
+      "properties": {
+        "metrics": [
+          [ "AWS/ECS", "CPUUtilization", { "stat": "Average" } ],
+          [ ".", "MemoryUtilization", { "stat": "Average" } ]
+        ],
+        "period": 60,
+        "stat": "Average",
+        "region": "us-east-1",
+        "title": "Resource Utilization",
+        "yAxis": {
+          "left": {
+            "min": 0,
+            "max": 100
+          }
+        },
+        "annotations": {
+          "horizontal": [
+            {
+              "label": "CPU Warning: 70%",
+              "value": 70
+            },
+            {
+              "label": "CPU Critical: 85%",
+              "value": 85,
+              "fill": "above"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "type": "log",
+      "properties": {
+        "query": "fields @timestamp, @message, @duration, @error\n| filter ispresent(@error)\n| stats max(@duration) as max_duration, avg(@duration) as avg_duration, count(@error) as error_count by bin(5m)",
+        "region": "us-east-1",
+        "title": "Error Rate & Latency (5m bins)"
+      }
+    },
+    {
+      "type": "metric",
+      "properties": {
+        "metrics": [
+          [ "AWS/RDS", "DatabaseConnections", { "stat": "Average" } ],
+          [ ".", "CPUUtilization", { "stat": "Average" } ],
+          [ ".", "DiskQueueDepth", { "stat": "Average" } ]
+        ],
+        "period": 300,
+        "stat": "Average",
+        "region": "us-east-1",
+        "title": "Database Health"
+      }
+    },
+    {
+      "type": "metric",
+      "properties": {
+        "metrics": [
+          [ "AWS/ElastiCache", "CPUUtilization", { "stat": "Average" } ],
+          [ ".", "NetworkBytesIn", { "stat": "Sum" } ],
+          [ ".", "NetworkBytesOut", { "stat": "Sum" } ]
+        ],
+        "period": 300,
+        "stat": "Average",
+        "region": "us-east-1",
+        "title": "Redis Cache Performance"
+      }
+    },
+    {
+      "type": "metric",
+      "properties": {
+        "metrics": [
+          [ "AWS/ECS", "ContainerRestarts", { "stat": "Sum" } ]
+        ],
+        "period": 300,
+        "stat": "Sum",
+        "region": "us-east-1",
+        "title": "Container Restart Count"
+      }
+    },
+    {
+      "type": "log",
+      "properties": {
+        "query": "fields @timestamp, @message\n| filter ispresent(@message)\n| stats count() as log_entries by bin(1m)",
+        "region": "us-east-1",
+        "title": "Log Volume"
+      }
+    },
+    {
+      "type": "metric",
+      "properties": {
+        "metrics": [
+          [ "AWS/ApplicationELB", "ActiveConnectionCount", { "stat": "Average" } ],
+          [ ".", "NewConnectionCount", { "stat": "Sum" } ]
+        ],
+        "period": 60,
+        "stat": "Average",
+        "region": "us-east-1",
+        "title": "Connection Metrics"
+      }
+    },
+    {
+      "type": "metric",
+      "properties": {
+        "metrics": [
+          [ "AWS/RDS", "ReadThroughput", { "stat": "Average" } ],
+          [ ".", "WriteThroughput", { "stat": "Average" } ]
+        ],
+        "period": 300,
+        "stat": "Average",
+        "region": "us-east-1",
+        "title": "Database Throughput"
+      }
+    },
+    {
+      "type": "metric",
+      "properties": {
+        "metrics": [
+          [ "AWS/S3", "NumberOfObjects", { "stat": "Average" } ],
+          [ ".", "BucketSizeBytes", { "stat": "Average" } ]
+        ],
+        "period": 86400,
+        "stat": "Average",
+        "region": "us-east-1",
+        "title": "S3 Storage Metrics"
+      }
+    }
+  ]
+}

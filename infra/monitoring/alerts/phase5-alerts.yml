@@ -1,0 +1,83 @@
+groups:
+  - name: eldercare-phase5
+    rules:
+      - alert: ApiP95LatencyHigh
+        expr: max(eldercare_http_request_latency_ms_p95{path!="none",path!="/metrics"}) > 500
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "API P95 latency high"
+          description: "P95 latency exceeded 500ms for 5 minutes."
+
+      - alert: ApiP99LatencyCritical
+        expr: max(eldercare_http_request_latency_ms_p99{path!="none",path!="/metrics"}) > 1000
+        for: 5m
+        labels:
+          severity: page
+        annotations:
+          summary: "API P99 latency critical"
+          description: "P99 latency exceeded 1000ms for 5 minutes."
+
+      - alert: ApiErrorRateHigh
+        expr: max(eldercare_http_request_error_rate{path!="none",path!="/metrics"}) > 0.01
+        for: 5m
+        labels:
+          severity: page
+        annotations:
+          summary: "API error rate high"
+          description: "Route-level error rate is above 1% for 5 minutes."
+
+      - alert: CeleryQueueLagHigh
+        expr: celery_queue_lag_seconds > 120
+        for: 10m
+        labels:
+          severity: page
+        annotations:
+          summary: "Celery queue lag high"
+          description: "Critical queue lag exceeded 120 seconds."
+
+      - alert: SosUnacknowledgedTooLong
+        expr: sos_unacknowledged_incidents > 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "SOS incident unacknowledged"
+          description: "At least one SOS incident has no acknowledgement after 2 minutes."
+
+      - alert: SchedulerQueueLagCritical
+        expr: scheduler_queue_lag_seconds > 180
+        for: 5m
+        labels:
+          severity: page
+        annotations:
+          summary: "Scheduler lag critical"
+          description: "Scheduler queue lag exceeded 180 seconds for 5 minutes."
+
+      - alert: SchedulerRetrySpike
+        expr: increase(scheduler_task_retries_total[10m]) > 25
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Scheduler retries spiking"
+          description: "Task retries increased by more than 25 in the last 10 minutes."
+
+      - alert: SchedulerDeadLetterGrowth
+        expr: increase(scheduler_dead_letter_events_total[10m]) > 5
+        for: 10m
+        labels:
+          severity: page
+        annotations:
+          summary: "Dead-letter queue growth detected"
+          description: "More than 5 scheduler tasks moved to dead-letter queue in 10 minutes."
+
+      - alert: WebsocketDisconnectRateHigh
+        expr: max(eldercare_websocket_disconnect_rate_per_min{channel!="none"}) > 20
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "WebSocket disconnect rate high"
+          description: "Disconnect rate exceeded 20/min on at least one channel for 10 minutes."

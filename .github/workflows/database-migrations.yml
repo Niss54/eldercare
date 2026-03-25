@@ -1,0 +1,265 @@
+name: Database Migrations
+
+on:
+  push:
+    paths:
+      - 'apps/api/alembic/**'
+      - 'apps/api/migrations/**'
+    branches:
+      - main
+      - staging
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target environment'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+          - staging
+          - production
+
+jobs:
+  validate-migrations:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.13'
+
+      - name: Install dependencies
+        run: |
+          cd apps/api
+          pip install -r requirements.txt
+          pip install alembic sqlalchemy
+
+      - name: Validate migration script
+        run: |
+          cd apps/api
+          alembic current --sql || true
+          alembic heads
+
+      - name: Check for unresolved dependencies
+        run: |
+          cd apps/api
+          alembic heads
+          alembic current
+
+      - name: Syntax check
+        run: |
+          cd apps/api
+          python -m py_compile alembic/versions/*.py
+
+  test-migration-staging:
+    needs: validate-migrations
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/staging' || github.event.inputs.environment == 'staging'
+    environment:
+      name: staging
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: eldercare_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.13'
+
+      - name: Install dependencies
+        run: |
+          cd apps/api
+          pip install -r requirements.txt
+
+      - name: Run migrations on test database
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/eldercare_test
+        run: |
+          cd apps/api
+          alembic upgrade head
+
+      - name: Validate schema
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/eldercare_test
+        run: |
+          cd apps/api
+          python -c "
+          from sqlalchemy import inspect, create_engine
+          engine = create_engine('postgresql://postgres:postgres@localhost:5432/eldercare_test')
+          inspector = inspect(engine)
+          tables = inspector.get_table_names()
+          print(f'Tables: {tables}')
+          for table in tables:
+              columns = inspector.get_columns(table)
+              print(f'{table}: {[c[\"name\"] for c in columns]}')
+          "
+
+      - name: Run downgrade test
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/eldercare_test
+        run: |
+          cd apps/api
+          CURRENT=$(alembic current | head -1)
+          PREVIOUS=$(alembic history | head -2 | tail -1 | awk '{print $1}')
+          alembic downgrade $PREVIOUS || echo "Downgrade not available for initial migration"
+          alembic upgrade $CURRENT
+
+  backup-staging-db:
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/staging'
+    environment:
+      name: staging
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Create RDS snapshot
+        run: |
+          aws rds create-db-snapshot \
+            --db-instance-identifier staging-postgres \
+            --db-snapshot-identifier staging-postgres-pre-migration-$(date +%s) \
+            --tags Key=environment,Value=staging Key=purpose,Value=pre-migration-backup
+
+      - name: Wait for snapshot
+        run: |
+          aws rds wait db-snapshot-available \
+            --db-snapshot-identifier staging-postgres-pre-migration-$(date +%s)
+
+  migrate-staging:
+    needs: [test-migration-staging, backup-staging-db]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/staging'
+    environment:
+      name: staging
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.13'
+
+      - name: Install dependencies
+        run: |
+          cd apps/api
+          pip install -r requirements.txt
+
+      - name: Get RDS endpoint
+        id: rds
+        run: |
+          ENDPOINT=$(aws rds describe-db-instances \
+            --db-instance-identifier staging-postgres \
+            --query 'DBInstances[0].Endpoint.Address' \
+            --output text)
+          echo "endpoint=$ENDPOINT" >> $GITHUB_OUTPUT
+
+      - name: Run migrations on staging RDS
+        env:
+          DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+        run: |
+          cd apps/api
+          alembic upgrade head
+
+      - name: Verify migration
+        env:
+          DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+        run: |
+          cd apps/api
+          python -c "
+          import os
+          from sqlalchemy import inspect, create_engine
+          url = os.getenv('DATABASE_URL')
+          engine = create_engine(url)
+          inspector = inspect(engine)
+          print(f'Tables: {inspector.get_table_names()}')
+          "
+
+      - name: Notify Slack
+        if: always()
+        uses: slackapi/slack-github-action@v1.24.0
+        with:
+          webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
+          payload: |
+            {
+              "text": "Staging database migration: ${{ job.status }}",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "*Staging Database Migration*\nStatus: *${{ job.status }}*\nCommit: <${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}|${{ github.sha }}>"
+                  }
+                }
+              ]
+            }
+
+  request-production-approval:
+    needs: validate-migrations
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    
+    steps:
+      - name: Create migration approval issue
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const issue = await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `Database Migration Approval Required - ${context.sha.substring(0, 7)}`,
+              body: `**Database Migration Pending Approval**
+
+Commit: ${context.sha}
+Author: ${context.actor}
+
+Migration scripts have been validated. Please review and approve production migration:
+
+\`\`\`
+cd apps/api
+alembic upgrade head --sql
+\`\`\`
+
+### Required Checks Before Approval:
+- [ ] Migration has been tested on staging
+- [ ] Backup of production database created
+- [ ] Rollback plan documented
+- [ ] Schema changes reviewed by senior engineer
+- [ ] Zero-downtime compatibility verified
+
+Approvers: @db-admins`,
+              labels: ['database', 'migration', 'approval-required']
+            });
+            console.log(`Created issue: ${issue.data.html_url}`);

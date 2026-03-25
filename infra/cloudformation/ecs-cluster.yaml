@@ -1,0 +1,409 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Eldercare Platform ECS Cluster - CloudFormation Template'
+
+Parameters:
+  EnvironmentName:
+    Type: String
+    Default: production
+
+  DBEndpoint:
+    Type: String
+    Description: RDS endpoint address
+
+  DBPort:
+    Type: String
+    Default: '5432'
+
+  DBName:
+    Type: String
+    Default: eldercare
+
+  DBUsername:
+    Type: String
+
+  DBPassword:
+    Type: String
+    NoEcho: true
+
+  DBReadEndpoint:
+    Type: String
+    Description: RDS read endpoint address for read-heavy query traffic
+
+  RedisEndpoint:
+    Type: String
+    Description: Redis endpoint address
+
+  S3BucketName:
+    Type: String
+    Description: S3 bucket name
+
+  ContainerRegistryURL:
+    Type: String
+    Description: ECR or Docker Hub registry URL
+
+  VPCId:
+    Type: String
+    Description: VPC ID
+    
+  PrivateSubnet1:
+    Type: String
+    Description: Private Subnet 1 ID
+
+  PrivateSubnet2:
+    Type: String
+    Description: Private Subnet 2 ID
+
+  ECSSecurityGroupId:
+    Type: String
+    Description: ECS Security Group ID
+
+Resources:
+  # ECS Cluster
+  ECSCluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: !Sub '${EnvironmentName}-cluster'
+      ClusterSettings:
+        - Name: containerInsights
+          Value: enabled
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-cluster'
+
+  # ECS Capacity Provider
+  CapacityProvider:
+    Type: AWS::ECS::CapacityProvider
+    Properties:
+      Name: !Sub '${EnvironmentName}-capacity-provider'
+      AutoScalingGroupProvider:
+        AutoScalingGroupArn: !GetAtt ECSAutoScalingGroup.Arn
+        ManagedScaling:
+          Status: ENABLED
+          TargetCapacity: 100
+          MinimumScalingStepSize: 1
+          MaximumScalingStepSize: 1000
+
+  # IAM Role for ECS Task Execution
+  ECSTaskExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${EnvironmentName}-ecs-task-execution-role'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+      Policies:
+        - PolicyName: GetSecrets
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - secretsmanager:GetSecretValue
+                  - secretsmanager:DescribeSecret
+                Resource: !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:eldercare/*'
+
+  # IAM Role for ECS Task
+  ECSTaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${EnvironmentName}-ecs-task-role'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: S3Access
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                  - s3:DeleteObject
+                  - s3:ListBucket
+                Resource:
+                  - !Sub 'arn:aws:s3:::${S3BucketName}'
+                  - !Sub 'arn:aws:s3:::${S3BucketName}/*'
+
+  # API Task Definition
+  APITaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: !Sub '${EnvironmentName}-api'
+      NetworkMode: awsvpc
+      RequiresCompatibilities:
+        - FARGATE
+      Cpu: '512'
+      Memory: '1024'
+      ExecutionRoleArn: !GetAtt ECSTaskExecutionRole.Arn
+      TaskRoleArn: !GetAtt ECSTaskRole.Arn
+      ContainerDefinitions:
+        - Name: api
+          Image: !Sub '${ContainerRegistryURL}/eldercare-api:latest'
+          Essential: true
+          PortMappings:
+            - ContainerPort: 8000
+              Protocol: tcp
+          Environment:
+            - Name: APP_ENV
+              Value: !Ref EnvironmentName
+            - Name: DATABASE_URL
+              Value: !Sub 'postgresql://${DBUsername}:${DBPassword}@${DBEndpoint}:${DBPort}/${DBName}'
+            - Name: DATABASE_READ_URL
+              Value: !Sub 'postgresql://${DBUsername}:${DBPassword}@${DBReadEndpoint}:${DBPort}/${DBName}'
+            - Name: REDIS_URL
+              Value: !Sub 'redis://${RedisEndpoint}:6379/0'
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Sub '/aws/ecs/${EnvironmentName}-api'
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: ecs
+
+  # Web Task Definition
+  WebTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: !Sub '${EnvironmentName}-web'
+      NetworkMode: awsvpc
+      RequiresCompatibilities:
+        - FARGATE
+      Cpu: '256'
+      Memory: '512'
+      ExecutionRoleArn: !GetAtt ECSTaskExecutionRole.Arn
+      TaskRoleArn: !GetAtt ECSTaskRole.Arn
+      ContainerDefinitions:
+        - Name: web
+          Image: !Sub '${ContainerRegistryURL}/eldercare-web:latest'
+          Essential: true
+          PortMappings:
+            - ContainerPort: 3000
+              Protocol: tcp
+          Environment:
+            - Name: NODE_ENV
+              Value: production
+            - Name: NEXT_PUBLIC_API_BASE_URL
+              Value: !Sub 'https://api.${EnvironmentName}.eldr.care'
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Sub '/aws/ecs/${EnvironmentName}-web'
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: ecs
+
+  # Worker Task Definition
+  WorkerTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: !Sub '${EnvironmentName}-worker'
+      NetworkMode: awsvpc
+      RequiresCompatibilities:
+        - FARGATE
+      Cpu: '512'
+      Memory: '1024'
+      ExecutionRoleArn: !GetAtt ECSTaskExecutionRole.Arn
+      TaskRoleArn: !GetAtt ECSTaskRole.Arn
+      ContainerDefinitions:
+        - Name: worker
+          Image: !Sub '${ContainerRegistryURL}/eldercare-worker:latest'
+          Essential: true
+          Environment:
+            - Name: APP_ENV
+              Value: !Ref EnvironmentName
+            - Name: DATABASE_URL
+              Value: !Sub 'postgresql://${DBUsername}:${DBPassword}@${DBEndpoint}:${DBPort}/${DBName}'
+            - Name: DATABASE_READ_URL
+              Value: !Sub 'postgresql://${DBUsername}:${DBPassword}@${DBReadEndpoint}:${DBPort}/${DBName}'
+            - Name: CELERY_BROKER_URL
+              Value: !Sub 'redis://${RedisEndpoint}:6379/1'
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Sub '/aws/ecs/${EnvironmentName}-worker'
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: ecs
+
+  # API Service
+  APIService:
+    Type: AWS::ECS::Service
+    DependsOn: APITaskDefinition
+    Properties:
+      ServiceName: !Sub '${EnvironmentName}-api-service'
+      Cluster: !GetAtt ECSCluster.ClusterName
+      TaskDefinition: !Ref APITaskDefinition
+      DesiredCount: 3
+      LaunchType: FARGATE
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: DISABLED
+          SecurityGroups:
+            - !Ref ECSSecurityGroupId
+          Subnets:
+            - !Ref PrivateSubnet1
+            - !Ref PrivateSubnet2
+      DeploymentConfiguration:
+        MaximumPercent: 200
+        MinimumHealthyPercent: 100
+        DeploymentCircuitBreaker:
+          Enable: true
+          Rollback: true
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-api-service'
+
+  # Web Service
+  WebService:
+    Type: AWS::ECS::Service
+    DependsOn: WebTaskDefinition
+    Properties:
+      ServiceName: !Sub '${EnvironmentName}-web-service'
+      Cluster: !GetAtt ECSCluster.ClusterName
+      TaskDefinition: !Ref WebTaskDefinition
+      DesiredCount: 2
+      LaunchType: FARGATE
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: DISABLED
+          SecurityGroups:
+            - !Ref ECSSecurityGroupId
+          Subnets:
+            - !Ref PrivateSubnet1
+            - !Ref PrivateSubnet2
+      DeploymentConfiguration:
+        MaximumPercent: 200
+        MinimumHealthyPercent: 100
+        DeploymentCircuitBreaker:
+          Enable: true
+          Rollback: true
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-web-service'
+
+  # Worker Service
+  WorkerService:
+    Type: AWS::ECS::Service
+    DependsOn: WorkerTaskDefinition
+    Properties:
+      ServiceName: !Sub '${EnvironmentName}-worker-service'
+      Cluster: !GetAtt ECSCluster.ClusterName
+      TaskDefinition: !Ref WorkerTaskDefinition
+      DesiredCount: 3
+      LaunchType: FARGATE
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: DISABLED
+          SecurityGroups:
+            - !Ref ECSSecurityGroupId
+          Subnets:
+            - !Ref PrivateSubnet1
+            - !Ref PrivateSubnet2
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-worker-service'
+
+  # Auto Scaling for Worker Service
+  WorkerServiceScalingTarget:
+    Type: AWS::ApplicationAutoScaling::ScalableTarget
+    Properties:
+      MaxCapacity: 15
+      MinCapacity: 3
+      ResourceId: !Sub 'service/${ECSCluster}/${WorkerService.ServiceName}'
+      RoleARN: !Sub 'arn:aws:iam::${AWS::AccountId}:role/aws-service-role/ecs.application-autoscaling.amazonaws.com/AWSServiceRoleForApplicationAutoScaling_ECSService'
+      ScalableDimension: ecs:service:DesiredCount
+      ServiceNamespace: ecs
+
+  WorkerServiceScalingPolicy:
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+    Properties:
+      PolicyName: !Sub '${EnvironmentName}-worker-scaling-policy'
+      PolicyType: TargetTrackingScaling
+      ScalingTargetId: !Ref WorkerServiceScalingTarget
+      TargetTrackingScalingPolicyConfiguration:
+        TargetValue: 70.0
+        PredefinedMetricSpecification:
+          PredefinedMetricType: ECSServiceAverageCPUUtilization
+        ScaleOutCooldown: 60
+        ScaleInCooldown: 300
+
+  # Auto Scaling for API Service
+  APIServiceScalingTarget:
+    Type: AWS::ApplicationAutoScaling::ScalableTarget
+    Properties:
+      MaxCapacity: 10
+      MinCapacity: 3
+      ResourceId: !Sub 'service/${ECSCluster}/${APIService.ServiceName}'
+      RoleARN: !Sub 'arn:aws:iam::${AWS::AccountId}:role/aws-service-role/ecs.application-autoscaling.amazonaws.com/AWSServiceRoleForApplicationAutoScaling_ECSService'
+      ScalableDimension: ecs:service:DesiredCount
+      ServiceNamespace: ecs
+
+  APIServiceScalingPolicy:
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+    Properties:
+      PolicyName: !Sub '${EnvironmentName}-api-scaling-policy'
+      PolicyType: TargetTrackingScaling
+      ScalingTargetId: !Ref APIServiceScalingTarget
+      TargetTrackingScalingPolicyConfiguration:
+        TargetValue: 70.0
+        PredefinedMetricSpecification:
+          PredefinedMetricType: ECSServiceAverageCPUUtilization
+        ScaleOutCooldown: 60
+        ScaleInCooldown: 300
+
+  # Auto Scaling for Web Service
+  WebServiceScalingTarget:
+    Type: AWS::ApplicationAutoScaling::ScalableTarget
+    Properties:
+      MaxCapacity: 6
+      MinCapacity: 2
+      ResourceId: !Sub 'service/${ECSCluster}/${WebService.ServiceName}'
+      RoleARN: !Sub 'arn:aws:iam::${AWS::AccountId}:role/aws-service-role/ecs.application-autoscaling.amazonaws.com/AWSServiceRoleForApplicationAutoScaling_ECSService'
+      ScalableDimension: ecs:service:DesiredCount
+      ServiceNamespace: ecs
+
+  WebServiceScalingPolicy:
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+    Properties:
+      PolicyName: !Sub '${EnvironmentName}-web-scaling-policy'
+      PolicyType: TargetTrackingScaling
+      ScalingTargetId: !Ref WebServiceScalingTarget
+      TargetTrackingScalingPolicyConfiguration:
+        TargetValue: 70.0
+        PredefinedMetricSpecification:
+          PredefinedMetricType: ECSServiceAverageCPUUtilization
+        ScaleOutCooldown: 60
+        ScaleInCooldown: 300
+
+Outputs:
+  ClusterName:
+    Description: ECS Cluster Name
+    Value: !GetAtt ECSCluster.ClusterName
+    Export:
+      Name: !Sub '${EnvironmentName}-ECSCluster'
+
+  APIServiceName:
+    Description: API Service Name
+    Value: !GetAtt APIService.ServiceName
+    Export:
+      Name: !Sub '${EnvironmentName}-APIService'
+
+  WebServiceName:
+    Description: Web Service Name
+    Value: !GetAtt WebService.ServiceName
+    Export:
+      Name: !Sub '${EnvironmentName}-WebService'
+
+  WorkerServiceName:
+    Description: Worker Service Name
+    Value: !GetAtt WorkerService.ServiceName
+    Export:
+      Name: !Sub '${EnvironmentName}-WorkerService'

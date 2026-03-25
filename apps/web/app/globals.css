@@ -1,0 +1,111 @@
+@import "../styles/tokens.css";
+
+:root {
+  --bg: #f6f8f5;
+  --surface: #ffffff;
+  --surface-muted: #eef2ea;
+  --ink: #0f1720;
+  --ink-subtle: #425463;
+  --line: #d6ddd3;
+  --primary: #0f766e;
+  --primary-strong: #0b5f58;
+  --critical: #b42318;
+  --warning: #b54708;
+  --radius: 14px;
+  --shadow: var(--shadow-soft);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  min-height: 100%;
+}
+
+body {
+  font-family: var(--font-body), "Segoe UI", sans-serif;
+  color: var(--ink);
+  background:
+    radial-gradient(circle at 10% 0%, rgba(15, 118, 110, 0.09), transparent 40%),
+    radial-gradient(circle at 100% 90%, rgba(181, 71, 8, 0.07), transparent 35%),
+    linear-gradient(180deg, #fbfcfa 0%, var(--bg) 100%);
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+main {
+  width: min(1200px, 100% - 2rem);
+  margin: 1.5rem auto;
+}
+
+h1,
+h2,
+h3 {
+  font-family: var(--font-display), Georgia, serif;
+  letter-spacing: -0.01em;
+}
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+
+.pill {
+  display: inline-block;
+  font-size: 0.75rem;
+  border-radius: 999px;
+  padding: 0.2rem 0.6rem;
+  background: var(--surface-muted);
+  color: var(--ink-subtle);
+}
+
+.button {
+  border: none;
+  border-radius: 10px;
+  background: var(--primary);
+  color: #fff;
+  font-weight: 600;
+  padding: 0.55rem 0.9rem;
+  cursor: pointer;
+}
+
+.button:hover {
+  background: var(--primary-strong);
+}
+
+.button.ghost {
+  background: transparent;
+  color: var(--ink);
+  border: 1px solid var(--line);
+}
+
+.grid {
+  display: grid;
+  gap: 1rem;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (max-width: 900px) {
+  main {
+    width: min(1200px, 100% - 1rem);
+  }
+}

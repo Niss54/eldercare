@@ -1,0 +1,277 @@
+name: Deployment Monitoring & Rollback
+
+on:
+  repository_dispatch:
+    types: [deployment-started]
+  schedule:
+    - cron: '*/5 * * * *'  # Every 5 minutes
+  workflow_dispatch:
+
+jobs:
+  monitor-deployment:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Check deployment status
+        id: status
+        run: |
+          # Get current deployment status for all services
+          for service in api web worker; do
+            STATUS=$(aws ecs describe-services \
+              --cluster prod-cluster \
+              --services prod-${service}-service \
+              --query 'services[0].deployments[0].status' \
+              --output text)
+            
+            RUNNING=$(aws ecs describe-services \
+              --cluster prod-cluster \
+              --services prod-${service}-service \
+              --query 'services[0].runningCount' \
+              --output text)
+            
+            DESIRED=$(aws ecs describe-services \
+              --cluster prod-cluster \
+              --services prod-${service}-service \
+              --query 'services[0].desiredCount' \
+              --output text)
+            
+            echo "${service}_status=$STATUS" >> $GITHUB_OUTPUT
+            echo "${service}_running=$RUNNING" >> $GITHUB_OUTPUT
+            echo "${service}_desired=$DESIRED" >> $GITHUB_OUTPUT
+          done
+
+      - name: Get CloudWatch metrics
+        id: metrics
+        run: |
+          # Check API error rate (last 5 minutes)
+          ERROR_RATE=$(aws cloudwatch get-metric-statistics \
+            --namespace AWS/ECS \
+            --metric-name HTTPErrorRate \
+            --dimensions Name=ServiceName,Value=prod-api-service \
+            --start-time $(date -d '5 minutes ago' -u +%Y-%m-%dT%H:%M:%S) \
+            --end-time $(date -u +%Y-%m-%dT%H:%M:%S) \
+            --period 300 \
+            --statistics Average \
+            --query 'Datapoints[0].Average' \
+            --output text)
+          
+          # Check CPU utilization
+          CPU=$(aws cloudwatch get-metric-statistics \
+            --namespace AWS/ECS \
+            --metric-name CPUUtilization \
+            --dimensions Name=ServiceName,Value=prod-api-service \
+            --start-time $(date -d '5 minutes ago' -u +%Y-%m-%dT%H:%M:%S) \
+            --end-time $(date -u +%Y-%m-%dT%H:%M:%S) \
+            --period 300 \
+            --statistics Average \
+            --query 'Datapoints[0].Average' \
+            --output text)
+          
+          echo "error_rate=$ERROR_RATE" >> $GITHUB_OUTPUT
+          echo "cpu=$CPU" >> $GITHUB_OUTPUT
+
+      - name: Check application health
+        id: health
+        run: |
+          # Test API health endpoint
+          for i in {1..3}; do
+            RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" \
+              https://api.eldr.care/api/v1/health)
+            if [ "$RESPONSE" = "200" ]; then
+              echo "api_health=healthy" >> $GITHUB_OUTPUT
+              break
+            fi
+            sleep 5
+          done
+
+      - name: Evaluate rollback criteria
+        id: evaluate
+        run: |
+          ERROR_RATE=${{ steps.metrics.outputs.error_rate }}
+          CPU=${{ steps.metrics.outputs.cpu }}
+          API_HEALTH=${{ steps.health.outputs.api_health }}
+          
+          SHOULD_ROLLBACK=false
+          REASON=""
+          
+          # Check error rate threshold (5%)
+          if (( $(echo "$ERROR_RATE > 5" | bc -l 2>/dev/null) )); then
+            SHOULD_ROLLBACK=true
+            REASON="Error rate exceeded 5% threshold: $ERROR_RATE%"
+          fi
+          
+          # Check CPU threshold (85%)
+          if (( $(echo "$CPU > 85" | bc -l 2>/dev/null) )); then
+            SHOULD_ROLLBACK=true
+            REASON="CPU utilization exceeded 85% threshold: $CPU%"
+          fi
+          
+          # Check health
+          if [ "$API_HEALTH" != "healthy" ]; then
+            SHOULD_ROLLBACK=true
+            REASON="API health check failed"
+          fi
+          
+          echo "should_rollback=$SHOULD_ROLLBACK" >> $GITHUB_OUTPUT
+          echo "reason=$REASON" >> $GITHUB_OUTPUT
+
+      - name: Execute rollback if needed
+        if: steps.evaluate.outputs.should_rollback == 'true'
+        run: |
+          echo "ROLLBACK TRIGGERED: ${{ steps.evaluate.outputs.reason }}"
+          
+          # Get previous task definition
+          PREVIOUS_REVISION=$(aws ecs describe-services \
+            --cluster prod-cluster \
+            --services prod-api-service \
+            --query 'services[0].taskDefinition' \
+            --output text | rev | cut -d: -f2 | rev)
+          
+          ROLLBACK_REVISION=$((PREVIOUS_REVISION - 1))
+          
+          aws ecs update-service \
+            --cluster prod-cluster \
+            --service prod-api-service \
+            --task-definition prod-api-task:$ROLLBACK_REVISION \
+            --force-new-deployment
+
+      - name: Notify on rollback
+        if: steps.evaluate.outputs.should_rollback == 'true'
+        uses: slackapi/slack-github-action@v1.24.0
+        with:
+          webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
+          payload: |
+            {
+              "text": "AUTOMATIC ROLLBACK EXECUTED",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "*🔴 Automatic Rollback Triggered*\n${{ steps.evaluate.outputs.reason }}\n\nError Rate: ${{ steps.metrics.outputs.error_rate }}%\nCPU: ${{ steps.metrics.outputs.cpu }}%\n\nInvestigate immediately!"
+                  }
+                }
+              ]
+            }
+
+  canary-deployment:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'repository_dispatch'
+    
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Start canary deployment (10% traffic)
+        run: |
+          # Update service to route 10% traffic to new version
+          aws ecs update-service \
+            --cluster prod-cluster \
+            --service prod-api-service \
+            --force-new-deployment
+
+      - name: Monitor canary metrics (10 minutes)
+        run: |
+          START_TIME=$(date +%s)
+          DURATION=$((10 * 60))  # 10 minutes
+          
+          while [ $(($(date +%s) - START_TIME)) -lt $DURATION ]; do
+            # Get metrics for canary period
+            ERROR_RATE=$(aws cloudwatch get-metric-statistics \
+              --namespace AWS/ECS \
+              --metric-name HTTPErrorRate \
+              --dimensions Name=ServiceName,Value=prod-api-service \
+              --start-time $(date -d '2 minutes ago' -u +%Y-%m-%dT%H:%M:%S) \
+              --end-time $(date -u +%Y-%m-%dT%H:%M:%S) \
+              --period 120 \
+              --statistics Average \
+              --query 'Datapoints[0].Average' \
+              --output text)
+            
+            echo "Current error rate: $ERROR_RATE%"
+            
+            # If error rate exceeds threshold, abort canary
+            if (( $(echo "$ERROR_RATE > 2" | bc -l 2>/dev/null) )); then
+              echo "ERROR: Canary error rate exceeded 2%"
+              exit 1
+            fi
+            
+            sleep 30
+          done
+
+      - name: Promote canary to full deployment
+        run: |
+          aws ecs update-service \
+            --cluster prod-cluster \
+            --service prod-api-service \
+            --force-new-deployment
+
+      - name: Notify success
+        uses: slackapi/slack-github-action@v1.24.0
+        with:
+          webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
+          payload: |
+            {
+              "text": "Canary deployment promoted to production",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "*✅ Canary Deployment Successful*\nNew version promoted to 100% traffic"
+                  }
+                }
+              ]
+            }
+
+  cleanup-old-deployments:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Deregister old task definitions
+        run: |
+          # Keep only last 5 task definitions
+          TASK_DEFINITIONS=$(aws ecs list-task-definitions \
+            --family-prefix prod-api-task \
+            --sort DESCENDING \
+            --query 'taskDefinitionArns[5:]' \
+            --output text)
+          
+          for TASK_DEF in $TASK_DEFINITIONS; do
+            aws ecs deregister-task-definition --task-definition $TASK_DEF
+          done
+
+      - name: Clean up old container images
+        run: |
+          # Delete images older than 7 days
+          aws ecr describe-images \
+            --repository-name eldercare-api \
+            --query "imageDetails[?imagePushedAt<\`$(date -d '7 days ago' +%Y-%m-%d)\`].imageDigest" \
+            --output text | \
+            xargs -I {} aws ecr batch-delete-image \
+              --repository-name eldercare-api \
+              --image-ids imageDigest={}

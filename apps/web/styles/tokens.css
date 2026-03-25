@@ -1,0 +1,12 @@
+:root {
+  --font-size-hero: clamp(1.8rem, 2.4vw + 1rem, 3rem);
+  --font-size-title: clamp(1.3rem, 1.1vw + 0.9rem, 2rem);
+  --font-size-body: 1rem;
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+  --shadow-soft: 0 12px 35px rgba(15, 23, 32, 0.08);
+}

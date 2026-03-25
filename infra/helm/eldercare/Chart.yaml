@@ -1,0 +1,19 @@
+apiVersion: v2
+name: eldercare
+description: Hercare-grade eldercare remote monitoring platform
+type: application
+version: 1.0.0
+appVersion: "0.1.0"
+keywords:
+  - eldercare
+  - remote monitoring
+  - healthcare
+  - FastAPI
+  - Next.js
+home: https://github.com/yourorg/eldercare
+sources:
+  - https://github.com/yourorg/eldercare
+maintainers:
+  - name: DevOps Team
+    email: devops@eldr.care
+dependencies: []

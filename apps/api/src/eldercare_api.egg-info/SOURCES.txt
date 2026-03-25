@@ -1,0 +1,15 @@
+pyproject.toml
+src/main.py
+src/core/settings.py
+src/eldercare_api.egg-info/PKG-INFO
+src/eldercare_api.egg-info/SOURCES.txt
+src/eldercare_api.egg-info/dependency_links.txt
+src/eldercare_api.egg-info/requires.txt
+src/eldercare_api.egg-info/top_level.txt
+src/interfaces/api/v1/auth.py
+src/interfaces/api/v1/health.py
+src/interfaces/websocket/gateway.py
+src/modules/audit_logging/middleware.py
+src/modules/consent_access/policy.py
+src/modules/identity_access/models.py
+tests/test_health.py
