@@ -529,4 +529,4 @@ eldercare-platform/
 
 ## License
 
-Proprietary startup repository unless otherwise specified.
+Proprietary startup repository unless otherwise specified...
